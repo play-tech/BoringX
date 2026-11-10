@@ -2,6 +2,27 @@ import type { BlockDef, ToolMeta } from "@/engine/types";
 import { text } from "@/engine/p";
 import { toolFromRecipe } from "@/components/toolFromRecipe";
 
+function validCalendarDate(input: string): boolean {
+  // Matches YYYY-MM-DD[T hour:minute(spec)(sec).[Z|offset]].
+  const m = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?(?:Z|[+-]\d{2}:?\d{2})?)?$/);
+  if (!m) return true;
+  const y = +m[1];
+  const mo = +m[2];
+  const d = +m[3];
+  if (mo < 1 || mo > 12) return false;
+  const daysInMonth = mo === 2
+    ? (y % 4 === 0 && y % 100 !== 0 || y % 400 === 0 ? 29 : 28)
+    : [31, 0, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1];
+  if (d < 1 || d > daysInMonth) return false;
+  if (m[4]) {
+    const h = +m[4];
+    const mi = +m[5];
+    const s = +(m[6] ?? 0);
+    if (h > 23 || mi > 59 || s > 59) return false;
+  }
+  return true;
+}
+
 export const meta: ToolMeta = {
   slug: "unix-timestamp", name: "Unix Timestamp", category: "Convert",
   blurb: "Converts epoch seconds or milliseconds to dates, and dates to epoch.",
@@ -32,11 +53,15 @@ export const blocks: BlockDef[] = [{
       let ms: number;
       if (l.toLowerCase() === "now") ms = Date.now();
       else if (/^-?\d+(\.\d+)?$/.test(l)) { const n = Number(l); ms = Math.abs(n) >= 1e11 ? n : n * 1000; }
-      else { ms = Date.parse(l); if (Number.isNaN(ms)) return `${l}\n  Could not read this as a date. Use ISO format like 2026-01-31T09:30:00Z.`; }
+      else {
+        if (!validCalendarDate(l)) return `${l}\n  Could not read this as a date. Use ISO format like 2026-01-31T09:30:00Z.`;
+        ms = Date.parse(l);
+        if (Number.isNaN(ms)) return `${l}\n  Could not read this as a date. Use ISO format like 2026-01-31T09:30:00Z.`;
+      }
       if (!Number.isFinite(ms) || Math.abs(ms) > 8.64e15) return `${l}\n  Out of range.`;
-      return [l, `  seconds:  ${Math.floor(ms / 1000)}`, `  millis:   ${Math.floor(ms)}`, `  ISO UTC:  ${new Date(ms).toISOString()}`, `  ${tz}: ${fmtInZone(ms, tz)}`, `  relative: ${relative(ms)}`].join("\n");
+      return [`${l}`, `  seconds:  ${Math.floor(ms / 1000)}`, `  millis:   ${Math.floor(ms)}`, `  ISO UTC:  ${new Date(ms).toISOString()}`, `  ${tz}: ${fmtInZone(ms, tz)}`, `  relative: ${relative(ms)}`].join("\n");
     }).join("\n\n");
   },
-}];
+}]
 
 export default toolFromRecipe(meta.recipe!, blocks, { inputLabel: "Timestamps or dates, one per line", outputName: "timestamps.txt", inputRows: 5 });
